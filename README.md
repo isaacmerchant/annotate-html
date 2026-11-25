@@ -26,7 +26,7 @@ Clone this repo, then link it into the shared skills folder and from there into 
 skills folder. One copy then serves every agent, and a `git pull` updates them all.
 
 ```shell
-git clone https://github.com/iwlm-ctrl/annotate-html.git ~/Developer/annotate-html
+git clone https://github.com/isaacmerchant/annotate-html.git ~/Developer/annotate-html
 ln -sfn ~/Developer/annotate-html ~/.agents/skills/annotate-html
 for d in ~/.claude/skills ~/.config/opencode/skills ~/.codex/skills ~/.cursor/skills ~/.gemini/skills; do
   mkdir -p "$d" && ln -sfn ~/.agents/skills/annotate-html "$d/annotate-html"
