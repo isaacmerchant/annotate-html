@@ -27,6 +27,7 @@ Lightweight: no install, the app is never modified. A small local proxy injects 
 3. **Tell the user how to use it**, briefly:
    - Toolbar: Pin (click an element), Text (select text), Area (drag a box), Page note.
    - Optionally set a type: Problem / Suggestion / Question / Like.
+   - To change a comment: click its number bubble, or **Edit** in the Comments panel (which scrolls to it and highlights it).
    - When done: the **→ 🤖** button, Send to agent (the tab then waits and reloads into the next round by itself). Or **Export ▾** then **Copy as text** (paste it here) or **Save as text/JSON file…** (tell you the path).
 4. **Wait** for the feedback. Do not poll or guess. If the background process exits with `FEEDBACK SENT: <path>`, the feedback follows in its output (the same text is in that file, with JSON alongside). Exiting any other way means it stopped or crashed; say so.
 5. **Act on it** once it arrives (pasted or read from the path):
@@ -43,7 +44,6 @@ Lightweight: no install, the app is never modified. A small local proxy injects 
 - The default slug is the folder name (file mode) or `host-port` (URL mode). Use `--project` to group several runs.
 - The page is identified by its file name, so every route of a single-page app that serves `index.html` shares one page id. Data-driven content (tables, charts) is re-found by selector then text, which can drift after filtering or sorting. Add `data-annot-id` to elements that matter.
 - Modal `<dialog>`s and page popovers are covered: the overlay joins the browser's top layer and moves into an open modal, so the toolbar and pins stay on top and clickable. Esc closes the overlay's own UI first, not the page's dialog.
-- Pins on `position: fixed` elements drift on scroll.
 - Not handled: websockets, and apps that enforce strict origin or CORS checks against the original port.
 - Old `.annotated.html` copies are no longer produced. Delete any left over from earlier runs.
 - Save As needs Chrome or Edge. Other browsers download the file instead.

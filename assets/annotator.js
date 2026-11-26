@@ -273,7 +273,7 @@
     var nodes = textNodes(root), pos = 0, r = document.createRange(), s = false;
     for (var i = 0; i < nodes.length; i++) {
       var len = nodes[i].data.length;
-      if (!s && start <= pos + len) { r.setStart(nodes[i], start - pos); s = true; }
+      if (!s && start < pos + len) { r.setStart(nodes[i], start - pos); s = true; }
       if (s && end <= pos + len) { r.setEnd(nodes[i], end - pos); return r; }
       pos += len;
     }
@@ -425,7 +425,9 @@
     '.hl{position:absolute;background:rgba(255,213,0,.35);border-bottom:2px solid #c2255c;pointer-events:none}',
     '.areabox{position:absolute;border:2px dashed #c2255c;background:rgba(194,37,92,.08);pointer-events:none}',
     '.pinbox{position:absolute;border:2px dashed #c2255c;background:rgba(194,37,92,.06);display:none;pointer-events:none}',
-    '.grp:hover .pinbox{display:block}',
+    '.grp:hover .pinbox,.grp.on .pinbox{display:block}',
+    '.grp.on .pinbox,.grp.on .areabox{border:3px solid #c2255c}',
+    '.grp.on .hl{background:rgba(255,213,0,.6)}',
     '.hover{position:absolute;border:2px solid #2557d6;background:rgba(37,87,214,.12);pointer-events:none}',
     '.rubber{position:absolute;border:2px dashed #2557d6;background:rgba(37,87,214,.1);pointer-events:none}'
   ].join('\n');
@@ -476,6 +478,8 @@
     return map;
   }
 
+  function byId(id) { return store.comments.filter(function (c) { return c.id === id; })[0]; }
+
   /* ---------- rendering the marks ---------- */
   var scheduled = false;
   function schedule() {
@@ -491,7 +495,6 @@
   }
 
   function renderMarks() {
-    layer.textContent = '';
     // keep the live pin highlight and area rubber band: pages that animate (typing effects, carousels)
     // re-render constantly, and wiping these made them vanish
     if (hoverBox) {
@@ -499,21 +502,27 @@
       layer.appendChild(hoverBox);
     }
     if (rubber) layer.appendChild(rubber);
-    if (!state.markers) return;
+    // Marks that have not changed stay in the DOM: rebuilding one between mousedown and mouseup loses the click.
+    var old = {};
+    [].forEach.call(layer.querySelectorAll('.grp'), function (g) { old[g.dataset.id] = g; });
+    var editing = state.pop && state.pop.existing && state.pop.existing.id;
     var nums = numbering();
     store.comments.filter(mine).forEach(function (c) {
-      if (c.type === 'global') return;
+      if (c.type === 'global' || (!state.markers && c.id !== editing)) return;
       var loc = locate(c);
       if (!loc) return;
-      var g = h('div', { class: 'grp', 'data-id': c.id });
+      var g = h('div', { class: c.id === editing ? 'grp on' : 'grp', 'data-id': c.id });
       if (c.type === 'text') loc.rects.forEach(function (r) { g.appendChild(place(h('div', { class: 'hl' }), r)); });
       if (c.type === 'area') g.appendChild(place(h('div', { class: 'areabox' }), loc.box));
       if (c.type === 'pin') g.appendChild(place(h('div', { class: 'pinbox' }), loc.rects[0]));
-      var m = h('div', { class: 'marker', title: c.text, onclick: function (e) { e.stopPropagation(); openPopover({ existing: c }); } }, String(nums[c.id]));
+      var m = h('div', { class: 'marker', title: c.text, onclick: function (e) { e.stopPropagation(); openPopover({ existing: byId(c.id) }); } }, String(nums[c.id]));
       m.style.left = loc.point.x + 'px'; m.style.top = loc.point.y + 'px';
       g.appendChild(m);
-      layer.appendChild(g);
+      g.sig = g.outerHTML;
+      if (old[c.id] && old[c.id].sig === g.sig) delete old[c.id];
+      else layer.appendChild(g);
     });
+    Object.keys(old).forEach(function (id) { old[id].remove(); });
   }
 
   /* ---------- UI: toolbar ---------- */
@@ -614,7 +623,7 @@
       if (state.scope === 'all' && c.scope !== 'project') item.appendChild(h('div', { class: 'where' }, variantLabel(c.variant) + ' · ' + c.pageTitle));
       if (here && c.anchor && !loc) item.appendChild(h('div', { class: 'warn' }, '⚠ Element not found on the page right now'));
       item.appendChild(h('div', { class: 'acts' },
-        h('button', { onclick: function (e) { e.stopPropagation(); openPopover({ existing: c }); } }, 'Edit'),
+        h('button', { onclick: function (e) { e.stopPropagation(); openPopover({ existing: c, reveal: true }); } }, 'Edit'),
         h('button', { class: 'danger', onclick: function (e) { e.stopPropagation(); removeComment(c.id); } }, 'Delete')));
       body.appendChild(item);
     });
@@ -647,17 +656,24 @@
     }
     focusComment(c.id);
   }
+  /* Instant, so the mark and popover can be placed straight away. */
+  function reveal(c) {
+    if (!locate(c)) return false;
+    var el = c.type === 'text' ? findQuote(c.anchor).startContainer.parentElement : resolveEl(c.anchor);
+    el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+    var y = locate(c).point.y;  // a large container (area comments) can be centred with the mark still off screen
+    if (y - scrollY < 20 || y - scrollY > innerHeight - 100) window.scrollTo({ top: y - innerHeight / 3, behavior: 'instant' });
+    render();
+    return true;
+  }
   function focusComment(id) {
-    var c = store.comments.filter(function (x) { return x.id === id; })[0];
+    var c = byId(id);
     if (!c) return;
-    var loc = locate(c);
-    if (!loc) { if (c.type === 'global') openPopover({ existing: c }); return; }
-    var y = Math.max(0, loc.point.y - innerHeight / 3);
-    window.scrollTo({ top: y, behavior: 'smooth' });
+    if (!reveal(c)) { if (c.type === 'global') openPopover({ existing: c }); return; }
     setTimeout(function () {
       var m = layer.querySelector('.grp[data-id="' + id + '"] .marker');
       if (m) { m.classList.remove('pulse'); void m.offsetWidth; m.classList.add('pulse'); }
-    }, 350);
+    }, 50);
   }
 
   function switchVariant(id, focusId) {
@@ -702,17 +718,20 @@
     if (popEl) popEl.remove();
     popEl = null; state.pop = null;
     var s = getSelection(); if (s) s.removeAllRanges();
+    renderMarks();
   }
 
   // opts: {type, anchor, at:{x,y} viewport} for new; {existing} for edit
   function openPopover(opts) {
     if (!store.author) { askName(); return; }
     closePopover();
+    clearHover();
     var c = opts.existing;
     var type = c ? c.type : opts.type;
     var anchor = c ? c.anchor : opts.anchor;
     var scope = c ? c.scope : 'page';
     state.pop = opts;
+    if (opts.reveal && mine(c)) reveal(c);
 
     var title = { pin: 'Comment on element', text: 'Comment on text', area: 'Comment on area', global: 'Page note' }[type];
     var sub = type === 'global' ? variantLabel(cfg.variant) + ' · ' + (document.title || pageId())
@@ -761,14 +780,16 @@
     popEl = h('div', { class: 'pop' }, h('div', { class: 'hd' }, title), h('div', { class: 'sub' }, sub), ta, kindSel, scopeSel, row);
 
     var at = opts.at;
-    if (!at && c) {
+    if (!at && c && mine(c)) {  // under the target, so the popover does not cover what is highlighted
       var loc = locate(c);
-      at = loc ? { x: loc.point.x - scrollX, y: loc.point.y - scrollY } : null;
+      var last = loc && loc.rects[loc.rects.length - 1];
+      at = loc ? { x: loc.point.x - scrollX, y: last.y + last.h - scrollY } : null;
     }
     if (!at) at = { x: innerWidth / 2 - 160, y: innerHeight / 3 };
     popEl.style.left = Math.max(8, Math.min(at.x + 16, innerWidth - 336)) + 'px';
     popEl.style.top = Math.max(8, Math.min(at.y + 16, innerHeight - 260)) + 'px';
     ui.appendChild(popEl);
+    renderMarks();
     setTimeout(function () { ta.focus(); }, 0);
   }
 
@@ -806,7 +827,8 @@
   var dragStart = null;
 
   function onMove(e) {
-    if (state.mode === 'pin' && !isOwn(e)) {
+    if (state.mode === 'pin') {
+      if (popEl || isOwn(e)) { clearHover(); return; }
       var el = pick(e);
       if (!el) { clearHover(); return; }
       if (!hoverBox) { hoverBox = h('div', { class: 'hover' }); layer.appendChild(hoverBox); }
@@ -1081,11 +1103,8 @@
     window.addEventListener('click', onClick, true);
     window.addEventListener('keydown', onKey, true);
     window.addEventListener('resize', schedule);
-    // page scroll: just shift the layer. Scrolling inside a box (e.g. a dialog body) moves its marks, so re-place them.
-    document.addEventListener('scroll', function (e) {
-      follow();
-      if (e.target !== document && e.target !== document.documentElement) schedule();
-    }, { capture: true, passive: true });
+    // shift the layer at once, then re-place the marks: fixed, sticky and inner-scrolled targets move differently
+    document.addEventListener('scroll', function () { follow(); schedule(); }, { capture: true, passive: true });
     window.addEventListener('load', schedule);
     // slide/tab changes that animate (fade, slide) settle after the DOM change, so re-check when they end
     ['transitionend', 'animationend'].forEach(function (t) { document.addEventListener(t, schedule, true); });
